@@ -33,7 +33,7 @@ def main():
                "Make clips like this with AI, and earn money on make.fun.")
     if not os.path.exists(VO):
         run(["/opt/hatch/bin/tts", "speak", "--language", "en",
-             "--voice", "avocado_v2:MAI_03", "--speed", "95",
+             "--voice", "avocado_v2:MAI_03", "--speed", "110",
              "--text", vo_text, "--output", VO])
 
     # 2. Hook segments: trim + vertical centre-crop + scale 720x1280
@@ -77,16 +77,18 @@ def main():
          "-i", SRC, "-i", VO,
          "-filter_complex",
          f"[0:v]crop=1215:2160:1312:0,scale=720:1280,eq=brightness=-0.25,{draw}[v];"
-         f"[0:a]volume=0.15[a0];[1:a]adelay=500|500,volume=1.0[a1];[a0][a1]amix=inputs=2:duration=first[a]",
+         f"[0:a]volume=0.15[a0];[1:a]adelay=500|500,volume=1.5[a1];[a0][a1]amix=inputs=2:duration=first:normalize=0,aresample=48000,aformat=channel_layouts=stereo[a]",
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "fast",
          "-crf", "20", "-c:a", "aac", "-b:a", "128k", "-t", "12", pitch_v])
 
-    # 4. Final concat: hook + pitch (same codecs/dims, stream copy via concat)
+    # 4. Final concat: hook + pitch, re-encoded so audio stays one format
+    # (stream copy broke the audio: the TTS track is 24 kHz mono, the trailer 48 kHz stereo)
     final_list = os.path.join(BASE, "final_list.txt")
     with open(final_list, "w") as f:
         f.write(f"file '{hook}'\nfile '{pitch_v}'\n")
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
-         "-i", final_list, "-c", "copy", OUT])
+         "-i", final_list, "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2", OUT])
 
     # 5. Verify
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
